@@ -68,3 +68,13 @@ jobs:
           cosign verify "${IMAGE}@${DIGEST}" \
             --certificate-identity "${IDENTITY}" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+      - name: Record installed versions
+        continue-on-error: true
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          VERSIONS="$(docker run --rm --entrypoint ls "${IMAGE}@${DIGEST}" /opt/Fiji/jars \
+            | sed -n -E 's/^mobie-viewer-fiji-(.*)\.jar$/MoBIE \1/p; s/^imagej-([0-9].*)\.jar$/ImageJ2 \1/p; s/^ij-([0-9].*)\.jar$/ImageJ1 \1/p' \
+            | paste -sd, | sed 's/,/, /g')"
+          echo "**Contents:** ${VERSIONS}" >> "$GITHUB_STEP_SUMMARY"
