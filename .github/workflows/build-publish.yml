@@ -1,0 +1,78 @@
+name: Build Fiji-MoBIE container image and publish to Quay.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      fiji_date:
+        description: Fiji archive folder (e.g. 20261023-0117) from downloads.imagej.net/fiji/archive/latest/
+        type: string
+        required: true
+      latest:
+        description: Also set the latest tag
+        type: boolean
+        default: false
+
+jobs:
+  build-container:
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: quay.io/rosalindfranklininstitute/fiji-mobie
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate Fiji date
+        env:
+          FIJI_DATE: ${{ inputs.fiji_date }}
+        run: |
+          [[ "${FIJI_DATE}" =~ ^[0-9]{8}-[0-9]{4}$ ]] || { echo "fiji_date must look like 20261023-0117"; exit 1; }
+          curl -fsSI "https://downloads.imagej.net/fiji/archive/latest/${FIJI_DATE}/fiji-latest-linux64-jdk.zip" > /dev/null
+
+      - name: Get build timestamp
+        id: time
+        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v4
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: sigstore/cosign-installer@v4.1.0
+
+      - name: Build and push Fiji-MoBIE image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          provenance: true
+          sbom: true
+          tags: |
+            ${{ env.IMAGE }}:${{ inputs.fiji_date }}
+            ${{ inputs.latest && format('{0}:latest', env.IMAGE) || '' }}
+          build-args: |
+            FIJI_DATE=${{ inputs.fiji_date }}
+            IMAGE_VERSION=${{ inputs.fiji_date }}
+            IMAGE_REVISION=${{ github.sha }}
+            IMAGE_CREATED=${{ steps.time.outputs.created }}
+
+      - name: Sign image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+
+      - name: Verify signature
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/build-publish.yml@${{ github.ref }}
+        run: |
+          cosign verify "${IMAGE}@${DIGEST}" \
+            --certificate-identity "${IDENTITY}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com

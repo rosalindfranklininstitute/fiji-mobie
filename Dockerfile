@@ -1,69 +1,66 @@
-# Sets Ubuntu Version and noninterctive mode on update
 ARG UBUNTU_VERSION=24.04
+FROM ubuntu:${UBUNTU_VERSION}
+
+ARG UBUNTU_VERSION
+# Required: archive folder name from https://downloads.imagej.net/fiji/archive/latest/ (e.g. 20261023-0117)
+ARG FIJI_DATE
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=Europe/London
 
-# From https://packages.ubuntu.com/ 
-# Version Locking packages in a container is good practise. 
-ARG CURL_VERSION="8.5.0-2ubuntu10.6"
-ARG UNZIP_VERSION="6.0-28ubuntu4.1"
-ARG OPENJDK_8_JRE_HEADLESS_VERSION="8u442-b06~us1-0ubuntu1~24.04"
-ARG LIBX11_DEV_VERSION="2:1.8.7-1build1"
+# Include runtime libraries for Java GUI (TODO: test)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl unzip \
+    libx11-dev libxext6 libxrender1 libxtst6 libxi6 libxrandr2 \
+    libfreetype6 fontconfig fonts-dejavu-core libgl1 shared-mime-info \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-FROM ubuntu:${UBUNTU_VERSION}
-# Allow for accesing Arugments 
-ARG CURL_VERSION
-ARG UNZIP_VERSION
-ARG OPENJDK_8_JRE_HEADLESS_VERSION
-ARG LIBX11_DEV_VERSION
+# Download, verify, unzip (JDK bundled)
+RUN FIJI_BASE="https://downloads.imagej.net/fiji/archive/latest/${FIJI_DATE:?FIJI_DATE build arg is required}" \
+    && ZIP=fiji-latest-linux64-jdk.zip \
+    && cd /tmp \
+    && curl -fsSL -O "${FIJI_BASE}/${ZIP}" \
+    && for h in sha256 sha512; do \
+         echo "$(curl -fsSL "${FIJI_BASE}/${ZIP}.${h}")  ${ZIP}" | ${h}sum -c - || exit 1; \
+       done \
+    && unzip -q "${ZIP}" -d /opt \
+    && rm "${ZIP}"
 
-# Install required packages to get install and run fiji with mobie.
-RUN apt-get -y update && apt-get install -y --no-install-recommends \
-    curl=${CURL_VERSION} \
-    unzip=${UNZIP_VERSION} \
-    openjdk-8-jre-headless=${OPENJDK_8_JRE_HEADLESS_VERSION} \
-    libx11-dev=${LIBX11_DEV_VERSION} \
-    # Clean up and remove cache to reduce the image size.
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ENV FIJI_DIR=/opt/Fiji
+ENV PATH=${PATH}:${FIJI_DIR}
 
-# Get fiji-linux64 package
-RUN curl -o fiji-linux64.zip -L  https://downloads.micron.ox.ac.uk/fiji_update/mirrors/fiji-latest/fiji-linux64.zip \
-    # Get sums from another mirror in case the above mirror is compromised. 
-    && curl -o fiji-linux64.zip.md5 -L https://downloads.imagej.net/fiji/latest/fiji-linux64.zip.md5 \
-    && curl -o fiji-linux64.zip.sha1 -L https://downloads.imagej.net/fiji/latest/fiji-linux64.zip.sha1 \
-    && curl -o fiji-linux64.zip.sha256 -L https://downloads.imagej.net/fiji/latest/fiji-linux64.zip.sha256 \
-    && curl -o fiji-linux64.zip.sha512 -L https://downloads.imagej.net/fiji/latest/fiji-linux64.zip.sha512
+# MoBIE: latest from the update site at build time (cannot be pinned)
+RUN "${FIJI_DIR}/fiji-linux-x64" --update edit-update-site MoBIE https://sites.imagej.net/MoBIE/ \
+    && "${FIJI_DIR}/fiji-linux-x64" --update update \
+    && ls "${FIJI_DIR}"/jars/mobie-viewer-fiji-*.jar
 
-# Add filename to checksums and check they are as expected
-RUN sed -i 's/$/  fiji-linux64.zip/' fiji-linux64.zip.md5 \
-    && sed -i 's/$/  fiji-linux64.zip/' fiji-linux64.zip.sha1 \
-    && sed -i 's/$/  fiji-linux64.zip/' fiji-linux64.zip.sha256 \
-    && sed -i 's/$/  fiji-linux64.zip/' fiji-linux64.zip.sha512 \
-    # Check fiji-linux64.zip has the same hash as expected
-    && md5sum -c fiji-linux64.zip.md5 \
-    && sha1sum -c fiji-linux64.zip.sha1 \
-    && sha256sum -c fiji-linux64.zip.sha256 \
-    && sha512sum -c fiji-linux64.zip.sha512 \
-    # remove the checksum files to reduce image size
-    && rm fiji-linux64.zip.*
+# Suppress updater prompt: image is a build-time snapshot, not updated at run time
+COPY prefs/ /root/.java/.userPrefs/net/imagej/updater/
 
-# Unzip Contents
-RUN unzip fiji-linux64.zip -d fiji \
-    # Remove Zip to reduce image size
-    && rm fiji-linux64.zip
+# Workaround for https://github.com/mobie/mobie-viewer-fiji/issues/1336:
+# MoBIE still needs AWS SDK v1, which Fiji no longer ships. Remove once fixed upstream.
+ARG AWS_SDK_V1_VERSION=1.12.772
+RUN cd "${FIJI_DIR}/jars" \
+    && for a in aws-java-sdk-s3 aws-java-sdk-core aws-java-sdk-kms jmespath-java; do \
+         f="${a}-${AWS_SDK_V1_VERSION}.jar"; \
+         u="https://repo1.maven.org/maven2/com/amazonaws/${a}/${AWS_SDK_V1_VERSION}/${f}"; \
+         curl -fsSLO "$u" || exit 1; \
+         echo "$(curl -fsSL "${u}.sha1")  ${f}" | sha1sum -c - || exit 1; \
+       done
 
-# Install MOBIE 
-RUN fiji/Fiji.app/fiji-linux-x64 --update edit-update-site MoBIE https://sites.imagej.net/MoBIE/ \
-    && fiji/Fiji.app/fiji-linux-x64 --update update 
+ARG IMAGE_VERSION="${FIJI_DATE}"
+ARG IMAGE_REVISION=""
+ARG IMAGE_CREATED=""
 
-# Move the fiji app the the usr/local/bin
-RUN mv fiji/Fiji.app/ /usr/local/bin/. \
-    # Removes Warning that Fiji is not updatable by making the contents of the folder mutable. 
-    && chattr -i -R /usr/local/bin/Fiji.app
+LABEL org.opencontainers.image.title="RFI/CCP-volumeEM Fiji with MoBIE" \
+      org.opencontainers.image.description="Ubuntu container with Fiji image viewer and MoBIE plugin" \
+      org.opencontainers.image.authors="The Rosalind Franklin Institute, The Collaborative Computational Project for Volume Electron Microscopy" \
+      org.opencontainers.image.source="https://github.com/rosalindfranklininstitute/fiji-mobie" \
+      org.opencontainers.image.documentation="https://rosalindfranklininstitute.github.io/volume-em-container-documentation/software/fiji/" \
+      org.opencontainers.image.licenses="GPL-3.0-only" \
+      org.opencontainers.image.base.name="docker.io/library/ubuntu:${UBUNTU_VERSION}" \
+      org.opencontainers.image.version="${IMAGE_VERSION}" \
+      org.opencontainers.image.revision="${IMAGE_REVISION}" \
+      org.opencontainers.image.created="${IMAGE_CREATED}" \
+      uk.ac.rfi.fiji.date="${FIJI_DATE}"
 
-# Remove uneeded programs to reduce image size
-RUN apt-get purge --autoremove unzip curl -y 
-
-# Entry Command on Run this launches Fiji. 
-CMD ["/usr/local/bin/Fiji.app/fiji-linux-x64"]
+CMD ["/opt/Fiji/fiji-linux-x64"]
