@@ -1,18 +1,49 @@
 # fiji-mobie
-A container for Fiji with the MoBIE plugin.
 
-## How to use 
+Container image for [Fiji](https://imagej.net/software/fiji/), an image processing distribution based on ImageJ, with the [MoBIE](https://mobie.github.io/) plugin installed for viewing and sharing multi-modal volume imaging data.
 
-Please checkout the latest releases at [https://quay.io/repository/rosalindfranklininstitute/fiji-mobie](https://quay.io/repository/rosalindfranklininstitute/fiji-mobie):
+- User documentation for container: [rosalindfranklininstitute.github.io/volume-em-container-documentation](https://rosalindfranklininstitute.github.io/volume-em-container-documentation/software/fiji/)
+- MoBIE documentation: [mobie.github.io](https://mobie.github.io/)
 
-To use with docker please use the following command:
+Images are published at [quay.io/rosalindfranklininstitute/fiji-mobie](https://quay.io/repository/rosalindfranklininstitute/fiji-mobie).
 
+If you notice a problem or have a suggestion for the container builds, please [open an issue](https://github.com/rosalindfranklininstitute/fiji-mobie/issues).
+
+## Tags
+Images are tagged with the UTC build date, e.g., `fiji-mobie:20261029`. As the build install MoBIE from its update site and runs the Fiji updater, the image containers Fiji and MoBIE as they were on the build date (the MoBIE site is rolling, and its jars assume the library versions in the current Fiji site).
+
+## Building a new image
+
+In **Actions** run the **Build Fiji-MoBIE container image and publish to Quay.io** flow, checking **latest** if you want the image to be tagged with `latest`.
+
+To build locally, use `docker build --no-cache .`, otherwise cached layers may contain an older Fiji.
+
+### Other maintenance
+Occasionally, action versions in the GitHub workflow may need updating.
+
+2026-10-29: The Dockerfile contains a workaround for MoBIE, which should be removed once fixed upstream, that adds the AWS SDK v1 jars to Fiji. See the [Known issues](#known-issues).
+
+## Known issues
+
+- **AWS SDK v1.** Current Fiji no longer ships the AWS SDK v1 libraries that MoBIE still uses, which makes MoBIE fail with `NoClassDefFoundError: com/amazonaws/services/s3/model/S3ObjectInputStream`. See [mobie-viewer-fiji#1336](https://github.com/mobie/mobie-viewer-fiji/issues/1336). The Dockerfile adds the required jars from Maven Central.
+- **BigVolumeViewer.** Some commands (e.g. **Plugins > Debug > Dump Stack**) report `NoClassDefFoundError: bvv/vistools/BvvHandle`, as the BigVolumeViewer library is not included. This does not affect opening MoBIE projects.
+
+## Image verification and metadata
+
+Images are signed in the build workflow using [cosign](https://docs.sigstore.dev/cosign/) keyless signing. To verify the `20261029` tag, for example:
+```bash
+cosign verify quay.io/rosalindfranklininstitute/fiji-mobie:20261029 \
+  --certificate-identity https://github.com/rosalindfranklininstitute/fiji-mobie/.github/workflows/build-publish.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
-docker run quay.io/rosalindfranklininstitute/fiji-mobie
+Note a signature shows who built the image, not that Fiji, MoBIE or the Ubuntu packages are trustworthy.
+
+Each image also carries build provenance and a software bill of materials (SBOM), which can be read with:
+```bash
+docker buildx imagetools inspect quay.io/rosalindfranklininstitute/fiji-mobie:20261029 --format '{{ json .Provenance }}'
+docker buildx imagetools inspect quay.io/rosalindfranklininstitute/fiji-mobie:20261029 --format '{{ json .SBOM }}'
 ```
 
-To use with apptainer please use the following command:
+## Licence
 
-```
-apptainer run docker://quay.io/rosalindfranklininstitute/fiji-mobie
-```
+The image is labelled `GPL-3.0-only`, the licence of Fiji. Fiji and Ubuntu bundle components under various other licences. In the image, those for Fiji are in `/opt/Fiji/licenses`.

@@ -3,10 +3,6 @@ name: Build Fiji-MoBIE container image and publish to Quay.io
 on:
   workflow_dispatch:
     inputs:
-      fiji_date:
-        description: Fiji archive folder (e.g. 20261023-0117) from downloads.imagej.net/fiji/archive/latest/
-        type: string
-        required: true
       latest:
         description: Also set the latest tag
         type: boolean
@@ -23,16 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Validate Fiji date
-        env:
-          FIJI_DATE: ${{ inputs.fiji_date }}
-        run: |
-          [[ "${FIJI_DATE}" =~ ^[0-9]{8}-[0-9]{4}$ ]] || { echo "fiji_date must look like 20261023-0117"; exit 1; }
-          curl -fsSI "https://downloads.imagej.net/fiji/archive/latest/${FIJI_DATE}/fiji-latest-linux64-jdk.zip" > /dev/null
-
-      - name: Get build timestamp
+      - name: Get build date and timestamp
         id: time
-        run: echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        run: |
+          {
+            echo "tag=$(date -u +%Y%m%d)"
+            echo "created=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Log in to Quay.io
         uses: docker/login-action@v4
@@ -55,11 +48,10 @@ jobs:
           provenance: true
           sbom: true
           tags: |
-            ${{ env.IMAGE }}:${{ inputs.fiji_date }}
+            ${{ env.IMAGE }}:${{ steps.time.outputs.tag }}
             ${{ inputs.latest && format('{0}:latest', env.IMAGE) || '' }}
           build-args: |
-            FIJI_DATE=${{ inputs.fiji_date }}
-            IMAGE_VERSION=${{ inputs.fiji_date }}
+            IMAGE_VERSION=${{ steps.time.outputs.tag }}
             IMAGE_REVISION=${{ github.sha }}
             IMAGE_CREATED=${{ steps.time.outputs.created }}
 

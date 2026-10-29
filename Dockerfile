@@ -2,20 +2,19 @@ ARG UBUNTU_VERSION=24.04
 FROM ubuntu:${UBUNTU_VERSION}
 
 ARG UBUNTU_VERSION
-# Required: archive folder name from https://downloads.imagej.net/fiji/archive/latest/ (e.g. 20261023-0117)
-ARG FIJI_DATE
 ARG DEBIAN_FRONTEND=noninteractive
 ARG TZ=Europe/London
 
-# Include runtime libraries for Java GUI (TODO: test)
+# Include runtime libraries for Java GUI 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl unzip \
     libx11-dev libxext6 libxrender1 libxtst6 libxi6 libxrandr2 \
     libfreetype6 fontconfig fonts-dejavu-core libgl1 shared-mime-info \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Download, verify, unzip (JDK bundled)
-RUN FIJI_BASE="https://downloads.imagej.net/fiji/archive/latest/${FIJI_DATE:?FIJI_DATE build arg is required}" \
+# Download the current Fiji (JDK bundled), verify and unzip.
+# NB no build argument changes between builds, so use --no-cache to get a newer Fiji.
+RUN FIJI_BASE="https://downloads.imagej.net/fiji/latest" \
     && ZIP=fiji-latest-linux64-jdk.zip \
     && cd /tmp \
     && curl -fsSL -O "${FIJI_BASE}/${ZIP}" \
@@ -28,12 +27,13 @@ RUN FIJI_BASE="https://downloads.imagej.net/fiji/archive/latest/${FIJI_DATE:?FIJ
 ENV FIJI_DIR=/opt/Fiji
 ENV PATH=${PATH}:${FIJI_DIR}
 
-# MoBIE: latest from the update site at build time (cannot be pinned)
+# MoBIE: latest from the update site at build time (cannot be pinned).
+# The updater also brings the rest of Fiji up to date.
 RUN "${FIJI_DIR}/fiji-linux-x64" --update edit-update-site MoBIE https://sites.imagej.net/MoBIE/ \
     && "${FIJI_DIR}/fiji-linux-x64" --update update \
     && ls "${FIJI_DIR}"/jars/mobie-viewer-fiji-*.jar
 
-# Suppress updater prompt: image is a build-time snapshot, not updated at run time
+# Suppress the updater prompt: the image is a build-time snapshot, not updated at run time
 COPY prefs/ /root/.java/.userPrefs/net/imagej/updater/
 
 # Workaround for https://github.com/mobie/mobie-viewer-fiji/issues/1336:
@@ -47,7 +47,7 @@ RUN cd "${FIJI_DIR}/jars" \
          echo "$(curl -fsSL "${u}.sha1")  ${f}" | sha1sum -c - || exit 1; \
        done
 
-ARG IMAGE_VERSION="${FIJI_DATE}"
+ARG IMAGE_VERSION="dev"
 ARG IMAGE_REVISION=""
 ARG IMAGE_CREATED=""
 
@@ -60,7 +60,6 @@ LABEL org.opencontainers.image.title="RFI/CCP-volumeEM Fiji with MoBIE" \
       org.opencontainers.image.base.name="docker.io/library/ubuntu:${UBUNTU_VERSION}" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \
-      org.opencontainers.image.created="${IMAGE_CREATED}" \
-      uk.ac.rfi.fiji.date="${FIJI_DATE}"
+      org.opencontainers.image.created="${IMAGE_CREATED}"
 
 CMD ["/opt/Fiji/fiji-linux-x64"]
