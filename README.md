@@ -44,6 +44,13 @@ docker buildx imagetools inspect quay.io/rosalindfranklininstitute/fiji-mobie:20
 docker buildx imagetools inspect quay.io/rosalindfranklininstitute/fiji-mobie:20261029 --format '{{ json .SBOM }}'
 ```
 
+The SBOM lists the Java libraries in Fiji as well as the Ubuntu packages, so it can be used to find the versions in an image, e.g. for MoBIE and ImageJ:
+
+```bash
+docker buildx imagetools inspect quay.io/rosalindfranklininstitute/fiji-mobie:20261029 --format '{{ json .SBOM }}' \
+  | jq -r '.SPDX.packages[] | select(.name | test("^(mobie-viewer-fiji|
+```
+
 ## Licence
 
-The image is labelled `GPL-3.0-only`, the licence of Fiji. Fiji and Ubuntu bundle components under various other licences. In the image, those for Fiji are in `/opt/Fiji/licenses`.
+The container image and Fiji are licensed under GNU General Public License v3. ImageJ2 core and MoBIE are licensed under BSD-2-Clause license. Other bundled components may have different licenses; see `/opt/Fiji/licenses`.
