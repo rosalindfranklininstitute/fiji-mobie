@@ -27,11 +27,13 @@ RUN FIJI_BASE="https://downloads.imagej.net/fiji/latest" \
 ENV FIJI_DIR=/opt/Fiji
 ENV PATH=${PATH}:${FIJI_DIR}
 
-# MoBIE: latest from the update site at build time (cannot be pinned).
-# The updater also brings the rest of Fiji up to date.
+# MoBIE and MorphoLibJ (IJPB-plugins): latest from their update sites at
+# build time (cannot be pinned). The updater also brings the rest of Fiji up to date.
 RUN "${FIJI_DIR}/fiji-linux-x64" --update edit-update-site MoBIE https://sites.imagej.net/MoBIE/ \
+    && "${FIJI_DIR}/fiji-linux-x64" --update edit-update-site IJPB-plugins https://sites.imagej.net/IJPB-plugins/ \
     && "${FIJI_DIR}/fiji-linux-x64" --update update \
-    && ls "${FIJI_DIR}"/jars/mobie-viewer-fiji-*.jar
+    && ls "${FIJI_DIR}"/jars/mobie-viewer-fiji-*.jar \
+    && ls "${FIJI_DIR}"/plugins/MorphoLibJ_*.jar
 
 # Suppress the updater prompt: the image is a build-time snapshot, not updated at run time
 COPY prefs/ /root/.java/.userPrefs/net/imagej/updater/
